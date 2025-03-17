@@ -1,0 +1,651 @@
+---
+title: "STA_141A_Final_Project"
+output: html_document
+Date: "03/17/2025"
+---
+
+##Load Dataset
+
+list.files("~/Documents/STA141A/sessions/")
+# Define the correct file path
+data_path <- "~/Documents/STA141A/sessions/"
+
+# Initialize an empty list
+session <- list()
+
+# Loop through each session file and load it
+for (i in 1:18) {
+  file_name <- paste0(data_path, "session", i, ".rds")
+  
+  if (file.exists(file_name)) {
+    session[[i]] <- readRDS(file_name)
+  } else {
+    print(paste("File not found:", file_name))  # Debugging output
+  }
+}
+
+# Check if data loaded correctly
+length(session)  # Should return 18
+
+# View structure of the first session
+str(session[[1]])
+
+# Check available variables
+names(session[[1]])
+
+
+##Part 1
+
+#(i)
+
+# Compute the number of trials per session
+trials_per_session <- sapply(session, function(x) length(x$feedback_type))
+
+# Convert to data frame
+trials_df <- data.frame(session = 1:18, trials = trials_per_session)
+
+# Print the number of trials per session
+print(trials_df)
+
+# Plot the number of trials per session
+library(ggplot2)
+ggplot(trials_df, aes(x = factor(session), y = trials)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Number of Trials per Session", x = "Session", y = "Number of Trials")
+  
+# Compute the number of neurons per session (checking the first trial in each session)
+neurons_per_session <- sapply(session, function(x) dim(x$spks[[1]])[1])
+
+# Convert to data frame
+neurons_df <- data.frame(session = 1:18, neurons = neurons_per_session)
+
+# Print the number of neurons per session
+print(neurons_df)
+
+# Plot the number of neurons per session
+ggplot(neurons_df, aes(x = factor(session), y = neurons)) +
+  geom_bar(stat = "identity", fill = "darkorange") +
+  labs(title = "Number of Neurons per Session", x = "Session", y = "Number of Neurons")
+
+# Count the number of success (1) and failure (-1) trials across all sessions
+feedback_counts <- table(unlist(lapply(session, function(x) x$feedback_type)))
+
+# Convert to data frame
+feedback_df <- data.frame(feedback = names(feedback_counts), count = as.numeric(feedback_counts))
+
+# Print the feedback counts
+print(feedback_df)
+
+# Plot the distribution of feedback types
+ggplot(feedback_df, aes(x = feedback, y = count, fill = feedback)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("1" = "blue", "-1" = "red")) +
+  labs(title = "Distribution of Feedback Types", x = "Feedback Type", y = "Count")
+
+# Create a data frame of contrast values
+contrast_df <- data.frame(
+  contrast = c(unlist(lapply(session, function(x) x$contrast_left)), 
+               unlist(lapply(session, function(x) x$contrast_right))),
+  side = rep(c("Left", "Right"), each = sum(trials_per_session))
+)
+
+# Print summary statistics
+summary(contrast_df$contrast)
+
+# Plot contrast level distribution
+ggplot(contrast_df, aes(x = factor(contrast), fill = side)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Distribution of Contrast Levels", x = "Contrast Level", y = "Count") +
+  scale_fill_manual(values = c("Left" = "purple", "Right" = "green"))
+
+# Count the number of sessions per mouse
+mouse_sessions <- table(unlist(lapply(session, function(x) x$mouse_name)))
+
+# Count the number of trials per mouse
+mouse_trials <- aggregate(trials_per_session, by = list(Mouse = unlist(lapply(session, function(x) x$mouse_name))), sum)
+
+# Print results
+print(mouse_sessions)
+print(mouse_trials)
+
+# Plot number of sessions per mouse
+ggplot(data.frame(Mouse = names(mouse_sessions), Sessions = as.numeric(mouse_sessions)), aes(x = Mouse, y = Sessions)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Number of Sessions per Mouse", x = "Mouse", y = "Number of Sessions")
+
+# Plot number of trials per mouse
+ggplot(mouse_trials, aes(x = Mouse, y = x)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  labs(title = "Number of Trials per Mouse", x = "Mouse", y = "Number of Trials")
+
+
+#(ii)
+
+# Compute mean spike count per neuron per trial
+mean_spikes_per_trial <- sapply(session, function(x) sapply(x$spks, function(y) rowMeans(y)))
+
+# Compute total spikes per trial
+total_spikes_per_trial <- sapply(session, function(x) sapply(x$spks, function(y) sum(y)))
+
+# Convert to data frame
+spike_summary_df <- data.frame(
+  session = rep(1:18, times = sapply(total_spikes_per_trial, length)),
+  total_spikes = unlist(total_spikes_per_trial)
+)
+
+# Print summary
+summary(spike_summary_df$total_spikes)
+
+# Plot distribution of total spikes per trial
+library(ggplot2)
+ggplot(spike_summary_df, aes(x = total_spikes)) +
+  geom_histogram(binwidth = 50, fill = "blue", color = "black") +
+  labs(title = "Distribution of Total Spikes per Trial", x = "Total Spikes", y = "Count")
+
+library(ggplot2)
+library(reshape2)
+
+# Select one trial from session 1
+spike_matrix <- session[[1]]$spks[[1]]  # Neurons × Time bins
+spike_df <- melt(spike_matrix)
+colnames(spike_df) <- c("Neuron", "Time_Bin", "Spikes")
+
+# Plot raster of neural activity
+ggplot(spike_df, aes(x = Time_Bin, y = Neuron)) +
+  geom_tile(aes(fill = Spikes)) +
+  scale_fill_gradient(low = "white", high = "black") +
+  labs(title = "Raster Plot of Neural Activity (Session 1, Trial 1)", x = "Time Bin", y = "Neuron")
+
+# Compute mean firing rate over time bins for session 1
+avg_spike_rate <- rowMeans(sapply(session[[1]]$spks, colMeans))
+
+# Convert to data frame
+time_bins <- 1:length(avg_spike_rate)
+spike_rate_df <- data.frame(Time_Bin = time_bins, Avg_Spike_Rate = avg_spike_rate)
+
+# Plot average spike rate over time
+ggplot(spike_rate_df, aes(x = Time_Bin, y = Avg_Spike_Rate)) +
+  geom_line(color = "red") +
+  labs(title = "Trial-Averaged Spike Rate Over Time (Session 1)", x = "Time Bin", y = "Avg Spike Rate")
+
+# Extract feedback and total spikes for each trial in session 1
+feedback_session1 <- session[[1]]$feedback_type
+total_spikes_session1 <- sapply(session[[1]]$spks, sum)
+
+# Create data frame
+spike_feedback_df <- data.frame(feedback = factor(feedback_session1), total_spikes = total_spikes_session1)
+
+# Boxplot of spike count by feedback type
+ggplot(spike_feedback_df, aes(x = feedback, y = total_spikes, fill = feedback)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("1" = "blue", "-1" = "red")) +
+  labs(title = "Neural Activity by Feedback Type (Session 1)", x = "Feedback Type", y = "Total Spikes")
+
+# Extract feedback types for session 1
+feedback_types <- session[[1]]$feedback_type
+
+# Compute mean firing rate for each neuron across successful trials
+success_spikes <- do.call(cbind, session[[1]]$spks[feedback_types == 1])
+mean_success_spikes <- rowMeans(success_spikes, na.rm = TRUE)
+
+# Compute mean firing rate for each neuron across failed trials
+failure_spikes <- do.call(cbind, session[[1]]$spks[feedback_types == -1])
+mean_failure_spikes <- rowMeans(failure_spikes, na.rm = TRUE)
+
+# Create data frame for visualization
+neuron_activity_df <- data.frame(
+  Neuron = 1:length(mean_success_spikes),
+  Success = mean_success_spikes,
+  Failure = mean_failure_spikes
+)
+
+# Plot: Neuron Firing Rate for Success vs. Failure
+library(ggplot2)
+ggplot(neuron_activity_df, aes(x = Success, y = Failure)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Neuron Activity: Success vs. Failure", x = "Avg Spikes (Success)", y = "Avg Spikes (Failure)")
+
+# Prepare an empty list to store results
+spike_rate_feedback_trends <- list()
+
+# Loop through sessions
+for (i in 1:length(session)) {
+  feedback_types <- session[[i]]$feedback_type  # Get feedback for trials
+  avg_spikes <- sapply(session[[i]]$spks, function(y) mean(y))  # Avg spike per trial
+  
+  # Store in data frame
+  spike_rate_feedback_trends[[i]] <- data.frame(
+    Trial = 1:length(avg_spikes),
+    Avg_Spikes = avg_spikes,
+    Feedback = factor(feedback_types),
+    Session = i
+  )
+}
+
+# Combine all sessions
+spike_rate_feedback_df <- do.call(rbind, spike_rate_feedback_trends)
+
+# Plot: Spike Rate Trend Over Trials (Separated by Feedback)
+library(ggplot2)
+ggplot(spike_rate_feedback_df, aes(x = Trial, y = Avg_Spikes, color = Feedback, group = Feedback)) +
+  geom_smooth(se = FALSE) +
+  scale_color_manual(values = c("1" = "blue", "-1" = "red")) +
+  labs(title = "Spike Rate Trends Over Trials by Feedback Type", x = "Trial Number", y = "Avg Spike Rate")
+
+
+#(iii)
+
+# Prepare data for early vs. late trials comparison
+early_trials <- spike_rate_feedback_df[spike_rate_feedback_df$Trial <= 50, ]
+late_trials <- spike_rate_feedback_df[spike_rate_feedback_df$Trial > (max(spike_rate_feedback_df$Trial) - 50), ]
+
+# Compute mean spike rate for early and late trials
+early_mean <- aggregate(Avg_Spikes ~ Feedback, data = early_trials, mean)
+late_mean <- aggregate(Avg_Spikes ~ Feedback, data = late_trials, mean)
+
+# Combine into a single data frame
+adaptation_df <- rbind(
+  data.frame(Feedback = early_mean$Feedback, Avg_Spikes = early_mean$Avg_Spikes, Period = "Early"),
+  data.frame(Feedback = late_mean$Feedback, Avg_Spikes = late_mean$Avg_Spikes, Period = "Late")
+)
+
+# Plot: Early vs. Late Trial Spike Rate
+ggplot(adaptation_df, aes(x = Period, y = Avg_Spikes, fill = Feedback)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("1" = "blue", "-1" = "red")) +
+  labs(title = "Comparison of Early vs. Late Trial Neural Activity", x = "Trial Period", y = "Avg Spike Rate")
+
+# Fit linear model to check decline in firing rate
+lm_spike_trend <- lm(Avg_Spikes ~ Trial, data = spike_rate_feedback_df)
+
+# Display model summary
+summary(lm_spike_trend)
+
+# Compute success rate for rolling windows of 50 trials
+feedback_trends <- aggregate(Feedback ~ Trial, data = spike_rate_feedback_df, function(x) mean(as.numeric(x) == 1))
+
+# Plot success rate trend over trials
+ggplot(feedback_trends, aes(x = Trial, y = Feedback)) +
+  geom_line(color = "blue") +
+  geom_smooth(se = FALSE, color = "red") +
+  labs(title = "Success Rate Over Trials", x = "Trial Number", y = "Proportion of Success")
+
+# Check column names in the dataset
+colnames(spike_rate_feedback_df)
+
+# Create a vector to store mouse names for each trial
+mouse_names <- unlist(lapply(1:18, function(i) rep(session[[i]]$mouse_name, length(session[[i]]$feedback_type))))
+
+# Add Mouse column to spike_rate_feedback_df
+spike_rate_feedback_df$Mouse <- mouse_names
+
+# Check if Mouse column is added
+colnames(spike_rate_feedback_df)
+
+# Compute success rate trends for each mouse
+mouse_success_trends <- aggregate(Feedback ~ Trial + Mouse, data = spike_rate_feedback_df, 
+                                  function(x) mean(as.numeric(x) == 1))
+
+# Plot success rate trend per mouse
+ggplot(mouse_success_trends, aes(x = Trial, y = Feedback, color = Mouse, group = Mouse)) +
+  geom_line() +
+  geom_smooth(se = FALSE) +
+  labs(title = "Success Rate Over Trials for Each Mouse", 
+       x = "Trial Number", y = "Proportion of Success")
+
+library(dplyr)
+library(ggplot2)
+
+# Define a function for computing rolling average
+compute_moving_avg <- function(x, window = 10) {
+  stats::filter(x, rep(1/window, window), sides = 1)
+}
+
+# Compute moving average for success rate by mouse
+mouse_success_trends <- spike_rate_feedback_df %>%
+  group_by(Mouse, Trial) %>%
+  summarise(Success_Rate = mean(Feedback == 1), .groups = "drop") %>%
+  arrange(Mouse, Trial) %>%
+  group_by(Mouse) %>%
+  mutate(Smoothed_Success = compute_moving_avg(Success_Rate, window = 20))  # Smooth over 20 trials
+
+# Plot with smoothed success rate
+ggplot(mouse_success_trends, aes(x = Trial, y = Smoothed_Success, color = Mouse, group = Mouse)) +
+  geom_line() +  
+  labs(title = "Smoothed Success Rate Over Trials for Each Mouse",
+       x = "Trial Number", y = "Proportion of Success") +
+  theme_minimal()
+
+# Load necessary libraries
+library(dplyr)
+
+# Construct a dataframe from session data
+logistic_df <- do.call(rbind, lapply(1:18, function(i) {
+  data.frame(
+    contrast_left = session[[i]]$contrast_left,
+    contrast_right = session[[i]]$contrast_right,
+    total_spikes = sapply(session[[i]]$spks, sum),  # Sum of spikes per trial
+    feedback_type = session[[i]]$feedback_type
+  )
+}))
+
+# Convert feedback_type to a binary factor (1 = success, 0 = failure)
+logistic_df$feedback_type <- ifelse(logistic_df$feedback_type == 1, 1, 0)
+
+# Fit logistic regression model
+logistic_model <- glm(feedback_type ~ contrast_left + contrast_right + total_spikes,
+                      data = logistic_df, family = binomial)
+
+# Summary of the model
+summary(logistic_model)
+
+# Display coefficients in odds ratio form
+exp(coef(logistic_model))
+
+# Compute predicted probabilities
+logistic_df$predicted_probs <- predict(logistic_model, type = "response")
+
+# Evaluate model performance
+table(Predicted = ifelse(logistic_df$predicted_probs > 0.5, 1, 0), 
+      Actual = logistic_df$feedback_type)
+
+library(ggplot2)
+
+# Plot predicted probability distribution
+ggplot(logistic_df, aes(x = predicted_probs, fill = as.factor(feedback_type))) +
+  geom_histogram(bins = 30, alpha = 0.7, position = "identity") +
+  labs(title = "Predicted Success Probability Distribution", 
+       x = "Predicted Probability", y = "Count") +
+  scale_fill_manual(name = "Actual Outcome", values = c("red", "blue"), labels = c("Failure", "Success"))
+
+logistic_model_interaction <- glm(feedback_type ~ contrast_left * contrast_right + total_spikes,
+                                  data = logistic_df, family = binomial)
+summary(logistic_model_interaction)
+
+set.seed(42)  # For reproducibility
+train_index <- sample(1:nrow(logistic_df), size = 0.8 * nrow(logistic_df))
+train_data <- logistic_df[train_index, ]
+test_data <- logistic_df[-train_index, ]
+
+# Fit model on training data
+logistic_model_cv <- glm(feedback_type ~ contrast_left + contrast_right + total_spikes,
+                         data = train_data, family = binomial)
+
+# Predict on test data
+test_data$predicted_probs <- predict(logistic_model_cv, newdata = test_data, type = "response")
+
+# Evaluate accuracy
+table(Predicted = ifelse(test_data$predicted_probs > 0.5, 1, 0), 
+      Actual = test_data$feedback_type)
+
+library(pROC)
+roc_curve <- roc(logistic_df$feedback_type, logistic_df$predicted_probs)
+plot(roc_curve, col = "blue", main = "ROC Curve for Logistic Model")
+auc(roc_curve)  # Compute Area Under the Curve (AUC)
+
+#(iv)
+ggplot(spike_summary_df, aes(x = as.factor(session), y = total_spikes)) +
+    geom_boxplot(fill = "skyblue") +
+    labs(title = "Total Spikes Per Trial Across Sessions",
+         x = "Session", y = "Total Spikes") +
+    theme_minimal()
+
+#Debugging/Fixing Dataset    
+colnames(logistic_df)
+colnames(spike_summary_df)
+
+colnames(logistic_df)[colnames(logistic_df) == "session_id"] <- "Session"
+colnames(logistic_df)[colnames(logistic_df) == "mouse_id"] <- "Mouse"
+colnames(spike_summary_df)[colnames(spike_summary_df) == "session_id"] <- "Session"
+colnames(spike_summary_df)[colnames(spike_summary_df) == "mouse_id"] <- "Mouse"
+
+colnames(logistic_df)[colnames(logistic_df) == "session_id"] <- "Session"
+colnames(logistic_df)[colnames(logistic_df) == "session_number"] <- "Session"
+
+sum(is.na(logistic_df$Session))
+
+str(logistic_df$Session)
+
+colnames(spike_summary_df)
+colnames(trials_df)
+colnames(session)
+
+# Merge from spike_summary_df
+logistic_df <- merge(logistic_df, spike_summary_df[, c("session", "total_spikes")], 
+                     by = "total_spikes", all.x = TRUE)
+
+# Rename the column to maintain consistency
+colnames(logistic_df)[colnames(logistic_df) == "session"] <- "Session"
+
+# Verify if Session exists
+colnames(logistic_df)
+sum(is.na(logistic_df$Session))  # Should
+
+# Merge from spike_summary_df
+logistic_df <- merge(logistic_df, spike_summary_df[, c("session", "total_spikes")], 
+                     by = "total_spikes", all.x = TRUE)
+
+# Rename the column to maintain consistency
+colnames(logistic_df)[colnames(logistic_df) == "session"] <- "Session"
+
+# Verify if Session exists
+colnames(logistic_df)
+sum(is.na(logistic_df$Session))
+
+str(logistic_df$Session)
+table(logistic_df$Session)  # Should show the distribution of sessions
+
+colnames(spike_summary_df)
+colnames(trials_df)
+colnames(logistic_df)
+
+mouse_info <- data.frame(
+    Session = 1:18,  # Assuming 18 sessions
+    Mouse = sapply(1:18, function(i) session[[i]]$mouse_name[1])  # Extract mouse name from each session
+)
+
+logistic_df <- merge(logistic_df, mouse_info, by = "Session", all.x = TRUE)
+
+colnames(logistic_df)  
+sum(is.na(logistic_df$Mouse))  
+
+#(iv)Continued
+
+ggplot(logistic_df, aes(x = as.factor(Mouse), y = total_spikes, fill = Mouse)) +
+    geom_boxplot() +
+    labs(title = "Total Spikes Per Trial Across Mice",
+         x = "Mouse", y = "Total Spikes") +
+    theme_minimal()
+    
+# One-way ANOVA for total spikes across sessions
+anova_session <- aov(total_spikes ~ as.factor(Session), data = logistic_df)
+summary(anova_session)
+
+# Tukey's Honest Significant Difference test
+tukey_session <- TukeyHSD(anova_session)
+print(tukey_session)
+
+# One-way ANOVA for total spikes across mice
+anova_mouse <- aov(total_spikes ~ as.factor(Mouse), data = logistic_df)
+summary(anova_mouse)
+
+# Tukey's HSD test for mice
+tukey_mouse <- TukeyHSD(anova_mouse)
+print(tukey_mouse)
+
+kruskal.test(total_spikes ~ as.factor(Session), data = logistic_df)  # Across sessions
+kruskal.test(total_spikes ~ as.factor(Mouse), data = logistic_df)  # Across mice
+
+library(rstatix)
+eta_squared(anova_session)  # Effect size for sessions
+eta_squared(anova_mouse)  # Effect size for mice
+
+
+##Part 2:
+
+#(i)
+
+# Merge spike summary with session/trial information
+logistic_df <- merge(logistic_df, spike_summary_df, by = "total_spikes", all.x = TRUE)
+
+# Merge with experimental contrast information
+logistic_df <- merge(logistic_df, trials_df, by = "session", all.x = TRUE)
+
+# Merge mouse data if available
+if ("mouse" %in% colnames(trials_df)) {
+  logistic_df <- merge(logistic_df, trials_df[, c("session", "mouse")], by = "session", all.x = TRUE)
+}
+
+# Ensure factor variables are correctly labeled
+logistic_df$Session <- as.factor(logistic_df$Session)
+logistic_df$Mouse <- as.factor(logistic_df$Mouse)
+logistic_df$feedback_type <- as.factor(logistic_df$feedback_type)
+
+# Verify merge success
+summary(logistic_df)
+str(logistic_df)
+sum(is.na(logistic_df))  # Check for missing values
+
+# Scale continuous variables
+logistic_df$contrast_left_scaled <- scale(logistic_df$contrast_left)
+logistic_df$contrast_right_scaled <- scale(logistic_df$contrast_right)
+logistic_df$total_spikes_scaled <- scale(logistic_df$total_spikes)
+
+# Handle missing values
+logistic_df <- na.omit(logistic_df)  # Remove rows with missing values
+
+# Check dataset after cleaning
+dim(logistic_df)
+summary(logistic_df)
+table(logistic_df$Session)
+table(logistic_df$Mouse)
+
+#(ii)
+library(lme4)
+mixed_model <- glmer(feedback_type ~ contrast_left_scaled + contrast_right_scaled + total_spikes_scaled + 
+                      (1 | Session), family = binomial, data = logistic_df)
+
+summary(mixed_model)
+
+anova(logistic_model, mixed_model, test = "Chisq")
+
+library(pROC)
+logistic_df$predicted_probs_mixed <- predict(mixed_model, type = "response")
+roc_curve_mixed <- roc(logistic_df$feedback_type, logistic_df$predicted_probs_mixed)
+plot(roc_curve_mixed, col = "blue", main = "ROC Curve for Mixed-Effects Model")
+auc(roc_curve_mixed)
+
+
+##Part 3
+
+library(randomForest)
+
+# Convert feedback_type to a factor for classification
+logistic_df$feedback_type <- as.factor(logistic_df$feedback_type)
+
+# Train Random Forest model
+rf_model <- randomForest(feedback_type ~ contrast_left_scaled + contrast_right_scaled + total_spikes_scaled, 
+                         data = logistic_df, ntree = 500, importance = TRUE)
+
+# Print model summary
+print(rf_model)
+
+# Variable Importance Plot
+varImpPlot(rf_model)
+
+library(pROC)
+
+# Predict class probabilities
+rf_probs <- predict(rf_model, logistic_df, type = "prob")[,2]
+
+# Compute ROC curve
+rf_roc <- roc(logistic_df$feedback_type, rf_probs)
+plot(rf_roc, col = "blue", main = "ROC Curve for Random Forest")
+
+# Compute AUC
+auc(rf_roc)
+
+# Confusion Matrix
+rf_preds <- predict(rf_model, logistic_df)
+table(Predicted = rf_preds, Actual = logistic_df$feedback_type)
+
+tuned_rf <- tuneRF(logistic_df[, c("contrast_left_scaled", "contrast_right_scaled", "total_spikes_scaled")], 
+                   logistic_df$feedback_type, stepFactor = 1.5, improve = 0.01, ntreeTry = 500, trace = TRUE)
+
+library(xgboost)
+
+# Prepare data for XGBoost
+xgb_data <- xgb.DMatrix(data = as.matrix(logistic_df[, c("contrast_left_scaled", "contrast_right_scaled", "total_spikes_scaled")]), 
+                         label = as.numeric(logistic_df$feedback_type) - 1)
+
+# Train XGBoost Model
+xgb_model <- xgboost(data = xgb_data, max_depth = 6, eta = 0.3, nrounds = 100, objective = "binary:logistic")
+
+# Predict Probabilities
+xgb_probs <- predict(xgb_model, xgb_data)
+
+# Compute ROC Curve for XGBoost
+xgb_roc <- roc(logistic_df$feedback_type, xgb_probs)
+plot(xgb_roc, col = "red", main = "ROC Curve for XGBoost")
+
+# Compute AUC
+auc(xgb_roc)
+
+# Compare AUC values
+auc_values <- c(
+  Logistic_Regression = auc(roc_curve_mixed),
+  Random_Forest = auc(rf_roc),
+  XGBoost = auc(xgb_roc)
+)
+
+# Print results
+print(auc_values)
+
+
+##TEST DATA
+
+#load in test data
+list.files("~/Documents/STA141A/test")
+
+test1 <- readRDS("~/Documents/STA141A/test/test1.rds")
+test2 <- readRDS("~/Documents/STA141A/test/test2.rds")
+
+#now we are testing to see if my model (XGBoost) is a good model
+# Inspect structure
+str(test1)
+str(test2)
+
+# Using means and SD from training data (replace with actual numbers)
+contrast_left_mean <- mean(logistic_df$contrast_left)
+contrast_left_sd <- sd(logistic_df$contrast_left)
+
+contrast_right_mean <- mean(logistic_df$contrast_right)
+contrast_right_sd <- sd(logistic_df$contrast_right)
+
+total_spikes_mean <- mean(logistic_df$total_spikes)
+total_spikes_sd <- sd(logistic_df$total_spikes)
+
+# Scale test1
+test1$contrast_left_scaled <- (test1$contrast_left - contrast_left_mean) / contrast_left_sd
+test1$contrast_right_scaled <- (test1$contrast_right - contrast_right_mean) / contrast_right_sd
+test1$total_spikes_scaled <- (test1$total_spikes - total_spikes_mean) / total_spikes_sd
+
+# Scale test2
+test2$contrast_left_scaled <- (test2$contrast_left - contrast_left_mean) / contrast_left_sd
+test2$contrast_right_scaled <- (test2$contrast_right - contrast_right_mean) / contrast_right_sd
+test2$total_spikes_scaled <- (test2$total_spikes - total_spikes_mean) / total_spikes_sd
+
+# Compute total_spikes for test1 and test2
+test1$total_spikes <- sapply(test1$spks, sum)
+test2$total_spikes <- sapply(test2$spks, sum)
+
+#predict
+library(xgboost)
+
+test1_matrix <- xgb.DMatrix(data = as.matrix(test1_df[, c("contrast_left_scaled", "contrast_right_scaled", "total_spikes_scaled")]))
+test2_matrix <- xgb.DMatrix(data = as.matrix(test2_df[, c("contrast_left_scaled", "contrast_right_scaled", "total_spikes_scaled")]))
+
+test1_df$predicted_probs <- predict(xgb_model, test1_matrix)
+test2_df$predicted_probs <- predict(xgb_model, test2_matrix)
+
